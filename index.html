@@ -2,7 +2,7 @@
 <html lang="pt"><head><meta charset="UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leitor Multimédia Web</title>
+<title>NoInstallPlayer</title>
 <style>
   :root{
     --bg:#1b1b1d; --panel:#242427; --panel2:#2d2d31; --line:#3a3a3f;
@@ -145,7 +145,7 @@
       <div id="subs"></div>
       <div id="welcome">
         <div class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M6 4l14 8-14 8z"></path></svg></div>
-        <h1>Leitor Multimédia Web</h1>
+        <h1>NoInstallPlayer</h1>
         <div>Arrasta ficheiros de vídeo, áudio, legendas ou listas .m3u para aqui</div>
         <div class="btns">
           <button class="btn pri" data-cmd="openFile">Abrir ficheiro…</button>
@@ -407,7 +407,7 @@ function playIndex(i){
   video.play().catch(err => { if (err.name !== 'AbortError') osd('Não foi possível reproduzir'); });
   $('#welcome').style.display = 'none';
   $('#title').textContent = it.name;
-  document.title = it.name + ' — Leitor Multimédia Web';
+  document.title = it.name + ' — NoInstallPlayer';
   renderPlaylist();
 }
 function nextIndex(dir){
@@ -462,7 +462,7 @@ function clearPlaylist(){
   S.list.forEach(it => it.file && URL.revokeObjectURL(it.url));
   S.list = []; S.cur = -1; video.removeAttribute('src'); video.load(); renderPlaylist(); showWelcomeIfEmpty();
 }
-function showWelcomeIfEmpty(){ if (S.cur < 0){ $('#welcome').style.display = ''; $('#title').textContent=''; document.title='Leitor Multimédia Web'; } }
+function showWelcomeIfEmpty(){ if (S.cur < 0){ $('#welcome').style.display = ''; $('#title').textContent=''; document.title='NoInstallPlayer'; } }
 function savePlaylist(){
   const lines = ['#EXTM3U', ...S.list.flatMap(it => [`#EXTINF:${isFinite(it.dur)?Math.round(it.dur):-1},${it.name}`, it.file ? it.name : it.url])];
   download(new Blob([lines.join('\n')], {type:'audio/x-mpegurl'}), 'lista.m3u');
@@ -639,7 +639,7 @@ const CMD = {
   info(){ showInfo(); }, keys(){ openDlg('dlgKeys'); },
   savePlaylist, clearPlaylist,
   jumpTime(){ const v = prompt('Saltar para o tempo (hh:mm:ss ou mm:ss):', fmt(video.currentTime)); if (v){ const t = v.split(':').reverse().reduce((a,x,i)=>a + Number(x)*60**i, 0); if (isFinite(t)) video.currentTime = t; } },
-  about(){ osd('Leitor Multimédia Web — HTML5 + Web Audio'); },
+  about(){ osd('NoInstallPlayer — HTML5 + Web Audio'); },
 };
 document.addEventListener('click', e => { const b = e.target.closest('[data-cmd]'); if (b && !b.closest('.menu')) CMD[b.dataset.cmd](); });
 
