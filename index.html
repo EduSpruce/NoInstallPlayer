@@ -39,6 +39,12 @@
   #osd{position:absolute;top:16px;right:20px;font-size:22px;font-weight:600;color:#fff;
     text-shadow:0 0 4px #000,0 0 8px #000;opacity:0;transition:opacity .3s;pointer-events:none}
   #osd.show{opacity:1;transition:none}
+  #busy{position:absolute;left:50%;top:50%;translate:-50% -50%;display:none;align-items:center;gap:12px;background:#000c;
+    padding:12px 18px;border-radius:10px;color:#fff;font-size:14px;pointer-events:none;z-index:5}
+  #busy.show{display:flex}
+  #busy i{width:18px;height:18px;border:2px solid #fff4;border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #engineTag{font-size:11px;color:var(--acc);margin-left:8px}
   #welcome{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--dim);text-align:center}
   #welcome .logo{width:96px;height:96px;border-radius:24px;background:linear-gradient(135deg,var(--acc),#c24d00);
     display:flex;align-items:center;justify-content:center;box-shadow:0 10px 40px #ff880033}
@@ -146,13 +152,16 @@
       <div id="welcome">
         <div class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M6 4l14 8-14 8z"></path></svg></div>
         <h1>NoInstallPlayer</h1>
-        <div>Arrasta ficheiros de vídeo, áudio, legendas ou listas .m3u para aqui</div>
+        <div>Arrasta para aqui vídeos, músicas, legendas, listas .m3u, imagens .iso ou pastas de DVD/Blu-ray</div>
+        <div style="font-size:12px;opacity:.75">MKV, AVI, WMV, FLV, MPG, VOB, TS, DTS, AC3, WMA, APE, AIFF, folhas .cue… o que o browser não toca é convertido aqui mesmo, sem enviar nada</div>
         <div class="btns">
           <button class="btn pri" data-cmd="openFile">Abrir ficheiro…</button>
+          <button class="btn" data-cmd="openFolder">Abrir pasta (DVD/Blu-ray)…</button>
           <button class="btn" data-cmd="openUrl">Abrir fluxo de rede…</button>
         </div>
       </div>
       <div id="osd"></div>
+      <div id="busy"><i></i><span></span></div>
       <div id="drop">Larga para adicionar à lista</div>
     </div>
 
@@ -264,8 +273,9 @@
   <div class="body"><div class="keys" id="keysList"><div><span>Reproduzir / Pausa</span><kbd>Espaço</kbd></div><div><span>Ecrã inteiro</span><kbd>F / duplo clique</kbd></div><div><span>Parar</span><kbd>S</kbd></div><div><span>Capturar imagem</span><kbd>Shift+S</kbd></div><div><span>Seguinte / Anterior</span><kbd>N / P</kbd></div><div><span>Avançar / Recuar 10 s</span><kbd>→ / ←</kbd></div><div><span>Avançar / Recuar 3 s</span><kbd>Shift+→ / ←</kbd></div><div><span>Avançar / Recuar 1 min</span><kbd>Ctrl+→ / ←</kbd></div><div><span>Volume + / −</span><kbd>↑ / ↓</kbd></div><div><span>Silenciar</span><kbd>M</kbd></div><div><span>Mais rápido / lento</span><kbd>] / [</kbd></div><div><span>Velocidade fina</span><kbd>+ / −</kbd></div><div><span>Velocidade normal</span><kbd>=</kbd></div><div><span>Imagem seguinte</span><kbd>E</kbd></div><div><span>Mostrar tempo</span><kbd>T</kbd></div><div><span>Repetir (nada/tudo/um)</span><kbd>L</kbd></div><div><span>Aleatório</span><kbd>R</kbd></div><div><span>Mudar proporção</span><kbd>A</kbd></div><div><span>Legendas on/off</span><kbd>V</kbd></div><div><span>Legendas −/+ 50 ms</span><kbd>G / H</kbd></div><div><span>Ciclo A→B</span><kbd>B</kbd></div><div><span>Abrir ficheiro</span><kbd>Ctrl+O</kbd></div><div><span>Abrir fluxo de rede</span><kbd>Ctrl+N</kbd></div><div><span>Lista de reprodução</span><kbd>Ctrl+L</kbd></div><div><span>Efeitos e filtros</span><kbd>Ctrl+E</kbd></div><div><span>Informação do conteúdo</span><kbd>Ctrl+I</kbd></div><div><span>Saltar para o tempo</span><kbd>Ctrl+T</kbd></div><div><span>Guardar lista</span><kbd>Ctrl+Y</kbd></div><div><span>Esta ajuda</span><kbd>F1</kbd></div></div></div>
 </div></div>
 
-<input type="file" id="fileInput" multiple="" accept="video/*,audio/*,.mkv,.srt,.vtt,.m3u,.m3u8" hidden="">
-<input type="file" id="subInput" accept=".srt,.vtt" hidden="">
+<input type="file" id="fileInput" multiple="" hidden="">
+<input type="file" id="folderInput" webkitdirectory="" multiple="" hidden="">
+<input type="file" id="subInput" accept=".srt,.vtt,.ass,.ssa" hidden="">
 
 <script>
 (() => {
@@ -375,40 +385,150 @@ function addItems(items, playFirst){
   if (playFirst || S.cur < 0) playIndex(start);
   items.forEach(probeDuration);
 }
-function itemFromFile(f){ return { name: f.name, url: URL.createObjectURL(f), size: f.size, mime: f.type, file: true, dur: NaN }; }
+function itemFromFile(f){ return { name: f.name, url: URL.createObjectURL(f), size: f.size, mime: f.type, file: true, f, dur: NaN }; }
+
+/* ================= motor "abre de tudo" (engine/engine.js, carregado só quando é preciso) ================= */
+// sempre convertidos (o browser não os toca, ou toca mal)
+const CONVERT_EXT = ['avi','wmv','asf','flv','f4v','mpg','mpeg','mpe','vob','m2ts','mts','m2t','m2v','mod','tod','vro','rm','rmvb','divx','xvid','ogm','mxf','dv','3g2','evo','dat','trp','tp','nsv','amv',
+  'wma','ape','aiff','aif','aifc','ac3','eac3','dts','dtshd','thd','truehd','mlp','dsf','dff','wv','tta','mka','amr','awb','ra','au','snd','caf','mpc','tak','shn','mp2','mpa','gsm','voc','w64','rf64','spx','xm','mod','s3m','it'];
+// imagens de disco lidas pelo disc-worker
+const IMAGE_EXT = ['iso','img','udf','nrg','mdf','cdr','toast','bin'];
+// tentados primeiro no browser; se falharem (ou não tiverem som) passam para o conversor
+const TRY_EXT = ['mkv','ts','mov','webm','3gp','m4v','mp4','ogv','ogg','oga','flac','wav','opus','m4a','aac','weba'];
+const BYTES_EXT = /^(vob|mpg|mpeg|mpe|m2ts|mts|m2t|ts|trp|tp|dat|evo|vro|mod|tod|m2v)$/;
+let ENGINE = null, engineCtl = null, playToken = 0;
+const engine = () => ENGINE || (ENGINE = import('./engine/engine.js'));
+const busy = t => { const b = $('#busy'); if (t){ b.querySelector('span').textContent = t; b.classList.add('show'); } else b.classList.remove('show'); };
+function stopEngine(){ if (engineCtl){ try { engineCtl.stop(); } catch {} engineCtl = null; } busy(null); setEngineTag(''); }
+function setEngineTag(t){ let e = $('#engineTag'); if (!e){ e = document.createElement('span'); e.id = 'engineTag'; $('#title').after(e); } e.textContent = t; }
+async function playWithEngine(it, why){
+  const tok = playToken;
+  const E = await engine();
+  if (tok !== playToken) return;
+  let src;
+  if (it.kind === 'image'){ busy('A ler a imagem de disco…'); src = await E.openImage(it.f); }
+  else if (it.kind === 'folder'){ busy('A ler a pasta do disco…'); src = await E.openFolder(it.files); }
+  else if (it.dts){ src = { blob: it.f, ext: 'dts', mode: 'bytes', inFmt: 'dts', skip: it.dts.dataOffset }; }
+  else { const e = extOf(it.name); src = { blob: it.f, ext: e, mode: BYTES_EXT.test(e) ? 'bytes' : 'time', forceTranscode: it.forceTranscode }; }
+  if (it.cue){ src.start = it.cue.start; if (it.cue.end) src.end = it.cue.end; if (src.mode === 'bytes') src.mode = 'time'; }
+  if (it.resumeAt){ src.start = it.resumeAt; it.resumeAt = 0; }
+  if (tok !== playToken) return;
+  stopEngine();
+  const ctl = await E.play(video, src, { status: t => tok === playToken && busy(t), error: m => { busy(null); osd(m); setEngineTag(''); } });
+  if (tok !== playToken){ ctl.stop(); return; }
+  engineCtl = ctl;
+  setEngineTag(ctl.copy ? '⟳ contentor convertido' : '⟳ convertido no browser' + (why ? ' (' + why + ')' : ''));
+  video.playbackRate = S.speed;
+  video.play().catch(()=>{});
+}
+async function engineFallback(it, why){
+  if (it.engineTried) { osd('Erro: não foi possível reproduzir este ficheiro'); return; }
+  it.engineTried = true;
+  try { await playWithEngine(it, why); }
+  catch(e){ busy(null); osd(e.code === 'ENCRYPTED' ? e.message : 'Erro: ' + (e.message || e)); console.warn(e); }
+}
+// pastas largadas: percorrer (webkitGetAsEntry) e guardar o caminho relativo
+async function readEntries(entry, prefix = '', out = []){
+  if (entry.isFile){ const f = await new Promise((r, j) => entry.file(r, j)); out.push({ path: prefix + entry.name, size: f.size, file: f }); return out; }
+  const rd = entry.createReader();
+  for (;;){ const batch = await new Promise((r, j) => rd.readEntries(r, j)); if (!batch.length) break; for (const e of batch) await readEntries(e, prefix + entry.name + '/', out); }
+  return out;
+}
+function isDiscFolder(files){ return files.some(f => /(^|\/)(VIDEO_TS\/VTS_\d\d_[1-9]\.VOB|BDMV\/STREAM\/[^/]+\.M2TS|MPEGAV\/[^/]+\.DAT|MPEG2\/[^/]+\.MPG)$/i.test(f.path)); }
+function folderItems(files){
+  if (isDiscFolder(files)){
+    const root = files[0].path.split('/')[0];
+    return { disc: [{ name: '💿 ' + root, kind: 'folder', files, file: true, url: '', dur: NaN }], rest: [] };
+  }
+  return { disc: [], rest: files.map(f => f.file) };
+}
 function itemFromUrl(u){ let name; try { name = decodeURIComponent(new URL(u).pathname.split('/').pop()) || u; } catch { name = u; } return { name, url: u, file: false, dur: NaN }; }
 function probeDuration(it){
+  if (it.kind || it.cue || !it.url || CONVERT_EXT.includes(extOf(it.name))) return;
   const m = document.createElement(AUDIO_EXT.includes(extOf(it.name)) ? 'audio' : 'video');
   m.preload = 'metadata'; m.muted = true; m.src = it.url;
   m.onloadedmetadata = () => { it.dur = m.duration; renderPlaylist(); m.removeAttribute('src'); m.load(); };
 }
 async function handleFiles(files, playFirst = true){
-  const media = [], subs = [];
+  const media = [], subs = [], cues = [], assSubs = [];
+  // vindos de «Abrir pasta…» (webkitRelativePath): DVD/Blu-ray inteiro como um só item
+  if (files.length && files[0].webkitRelativePath){
+    const list = files.map(f => ({ path: f.webkitRelativePath, size: f.size, file: f }));
+    const { disc, rest } = folderItems(list);
+    if (disc.length){ addItems(disc, playFirst); return; }
+    files = rest;
+  }
   for (const f of files){
     const e = extOf(f.name);
     if (e === 'srt' || e === 'vtt'){ subs.push(f); continue; }
+    if (e === 'ass' || e === 'ssa'){ assSubs.push(f); continue; }
+    if (e === 'cue'){ cues.push(f); continue; }
+    if (IMAGE_EXT.includes(e)){ media.push({ name: '💿 ' + f.name, kind: 'image', f, file: true, url: '', size: f.size, dur: NaN }); continue; }
     if (e === 'm3u' || (e === 'm3u8' && !/^#EXT-X-/m.test(await f.text()))){
       const lines = (await f.text()).split(/\r?\n/).map(l=>l.trim()).filter(l=>l && !l.startsWith('#') && /^https?:/i.test(l));
       media.push(...lines.map(itemFromUrl)); continue;
     }
     media.push(itemFromFile(f));
   }
+  // folhas .cue: cada faixa vira um item (início/fim dentro do ficheiro de áudio), como no servidor
+  for (const c of cues){
+    try {
+      const E = await engine();
+      const audio = media.filter(m => m.f && !m.kind).map(m => m.name);
+      const cue = await E.parseCue(c, audio);
+      for (const fl of cue.files){
+        const host = media.find(m => m.name === fl.match);
+        if (!host) continue;
+        const tracks = fl.tracks.map(t => ({ ...host, name: `${String(t.n).padStart(2,'0')}. ${t.title || 'Faixa ' + t.n}${t.performer || cue.performer ? ' — ' + (t.performer || cue.performer) : ''}`,
+          cue: { start: t.start, end: t.end }, dur: t.end != null ? t.end - t.start : NaN }));
+        media.splice(media.indexOf(host), 1, ...tracks);
+      }
+    } catch(e){ console.warn('cue', e); osd('Não consegui ler a folha .cue'); }
+  }
   if (media.length) addItems(media, playFirst);
   for (const f of subs) loadSubtitleText(await f.text(), f.name);
+  for (const f of assSubs){ try { busy('A converter legendas…'); loadSubtitleText(await (await engine()).subsToVtt(f), f.name); } catch(e){ osd('Não consegui ler as legendas'); } finally { busy(null); } }
 }
 function playIndex(i){
   if (i < 0 || i >= S.list.length) return;
   S.cur = i; const it = S.list[i];
   resetAB(); S.subs = []; renderSubs();
+  playToken++; stopEngine();
   if (!it.file) video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
-  video.src = it.url;
   initAudio();
-  video.playbackRate = S.speed;
-  video.play().catch(err => { if (err.name !== 'AbortError') osd('Não foi possível reproduzir'); });
+  const e = extOf(it.name);
+  const tok = playToken;
+  if (it.kind || (it.f && CONVERT_EXT.includes(e)) || it.forceTranscode){
+    video.removeAttribute('src'); engineFallback(Object.assign(it, { engineTried: false }));
+  } else if (it.f && e === 'wav' && it.dts !== false){
+    // DTS-CD: «PCM» que na verdade é DTS 5.1 (tocado tal e qual seria ruído)
+    engine().then(E => E.sniffDts(it.f)).then(d => {
+      if (tok !== playToken) return;
+      if (d){ it.dts = d; engineFallback(Object.assign(it, { engineTried: false }), 'DTS-CD'); }
+      else { it.dts = false; playNative(it); }
+    });
+  } else if (!it.file && /\.m3u8(\?|$)/i.test(it.url) && !video.canPlayType('application/vnd.apple.mpegurl')){
+    engine().then(E => E.playHls(video, it.url)).then(c => { if (tok !== playToken) return c.stop(); engineCtl = c; video.play().catch(()=>{}); }).catch(() => osd('Não foi possível abrir o fluxo HLS'));
+  } else playNative(it);
   $('#welcome').style.display = 'none';
   $('#title').textContent = it.name;
   document.title = it.name + ' — NoInstallPlayer';
   renderPlaylist();
+}
+function playNative(it){
+  it.engineTried = false;
+  video.src = it.url;
+  if (it.cue?.start) video.addEventListener('loadedmetadata', () => { video.currentTime = it.cue.start; }, { once: true });
+  video.playbackRate = S.speed;
+  video.play().catch(err => { if (err.name !== 'AbortError' && err.name !== 'NotSupportedError') osd('Não foi possível reproduzir'); });
+  // MKV/TS/MOV com áudio que o browser não descodifica (AC3, DTS…): imagem sem som → conversor
+  const tok = playToken;
+  if (it.f && ['mkv','ts','mov','m4v','mp4','webm','3gp'].includes(extOf(it.name))) setTimeout(() => {
+    if (tok !== playToken || engineCtl || video.paused || video.currentTime < 1) return;
+    const noAudio = video.webkitAudioDecodedByteCount === 0 || video.mozHasAudio === false;
+    const noVideo = video.videoWidth === 0 && !AUDIO_EXT.includes(extOf(it.name));
+    if (noAudio || noVideo){ it.resumeAt = video.currentTime; engineFallback(it, noAudio ? 'som não suportado' : 'vídeo não suportado'); }
+  }, 2500);
 }
 function nextIndex(dir){
   const n = S.list.length; if (!n) return -1;
@@ -603,14 +723,22 @@ video.addEventListener('loadedmetadata', () => { layoutVideo(); updTime(); const
 video.addEventListener('progress', updTime);
 video.addEventListener('ratechange', () => { if (Math.abs(video.playbackRate - S.speed) > .001) video.playbackRate = S.speed; });
 video.addEventListener('ended', () => { if (S.loop === 'one'){ video.currentTime = 0; video.play(); } else { const i = nextIndex(1); if (i >= 0) playIndex(i); } });
-video.addEventListener('error', () => { if (video.getAttribute('src')) osd('Erro: formato não suportado ou acesso negado'); });
+video.addEventListener('error', () => {
+  if (!video.getAttribute('src') || engineCtl) return;
+  const it = S.list[S.cur];
+  if (it && it.f && !it.engineTried) engineFallback(it, 'formato não suportado pelo browser');
+  else osd('Erro: formato não suportado ou acesso negado');
+});
+// faixa de uma folha .cue: acaba no início da seguinte
+video.addEventListener('timeupdate', () => { const it = S.list[S.cur]; if (it?.cue?.end != null && video.currentTime >= it.cue.end && !video.paused){ if (S.loop === 'one'){ video.currentTime = it.cue.start; } else { const i = nextIndex(1); i >= 0 ? playIndex(i) : video.pause(); } } });
 new ResizeObserver(layoutVideo).observe(stage);
 
 /* ================= comandos ================= */
 const fileInput = $('#fileInput');
 let addOnly = false;
 fileInput.onchange = () => { handleFiles([...fileInput.files], !addOnly); fileInput.value = ''; };
-$('#subInput').onchange = async e => { const f = e.target.files[0]; if (f) loadSubtitleText(await f.text(), f.name); e.target.value = ''; };
+$('#folderInput').onchange = e => { handleFiles([...e.target.files], true); e.target.value = ''; };
+$('#subInput').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (/\.(ass|ssa)$/i.test(f.name)) return handleFiles([f], false); loadSubtitleText(await f.text(), f.name); };
 const toggle = () => { if (S.cur < 0){ S.list.length ? playIndex(0) : CMD.openFile(); return; } initAudio(); video.paused ? video.play() : video.pause(); osd(video.paused ? 'Pausa' : 'Reproduzir'); };
 const seekBy = s => { if (!isFinite(video.duration)) return; video.currentTime = clamp(video.currentTime + s, 0, video.duration); osd(`${s>0?'+':''}${s}s  ${fmt(video.currentTime)} / ${fmt(video.duration)}`); };
 const openDlg = id => { $('#'+id).classList.add('show'); };
@@ -619,6 +747,8 @@ const closeDlgs = () => $$('.dlg-bg.show').forEach(d => d.classList.remove('show
 const CMD = {
   openFile(){ addOnly = false; fileInput.click(); },
   addFile(){ addOnly = true; fileInput.click(); },
+  openFolder(){ addOnly = false; $('#folderInput').click(); },
+  convert(){ const it = S.list[S.cur]; if (!it || !it.f) return osd('Só para ficheiros locais'); it.forceTranscode = true; it.engineTried = false; const t = video.currentTime; playIndex(S.cur); },
   openUrl(){ openDlg('dlgUrl'); setTimeout(()=>$('#urlInput').focus(), 30); },
   openSubs(){ $('#subInput').click(); },
   toggle, stop, next, prev,
@@ -645,7 +775,7 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-cmd]
 
 /* ================= menus ================= */
 const MENUS = () => [
-  ['Multimédia', [['Abrir ficheiro…','openFile','Ctrl+O'],['Adicionar à lista…','addFile'],['Abrir fluxo de rede…','openUrl','Ctrl+N'],'-',['Guardar lista (M3U)…','savePlaylist','Ctrl+Y'],'-',['Limpar lista','clearPlaylist']]],
+  ['Multimédia', [['Abrir ficheiro…','openFile','Ctrl+O'],['Adicionar à lista…','addFile'],['Abrir pasta (DVD/Blu-ray)…','openFolder'],['Abrir fluxo de rede…','openUrl','Ctrl+N'],'-',['Forçar conversão (sem som/imagem?)','convert'],'-',['Guardar lista (M3U)…','savePlaylist','Ctrl+Y'],'-',['Limpar lista','clearPlaylist']]],
   ['Reprodução', [['Reproduzir / Pausa','toggle','Espaço'],['Parar','stop','S'],['Anterior','prev','P'],['Seguinte','next','N'],'-',
     ['Avançar 10 s','fwd','→'],['Recuar 10 s','back','←'],['Saltar para o tempo…','jumpTime','Ctrl+T'],['Imagem seguinte','frame','E'],'-',
     ['Mais rápido','faster',']'],['Mais lento','slower','['],['Velocidade normal','normal','='],'-',
@@ -742,6 +872,17 @@ stage.addEventListener('dragleave', () => { if (--dragDepth <= 0){ dragDepth = 0
 [stage, $('#playlist')].forEach(el => el.addEventListener('drop', e => {
   if (dragFrom >= 0) return;
   e.preventDefault(); dragDepth = 0; stage.classList.remove('dragging');
+  const entries = [...e.dataTransfer.items || []].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+  if (entries.some(en => en.isDirectory)){
+    (async () => {
+      const all = [];
+      for (const en of entries) await readEntries(en, '', all);
+      const { disc, rest } = folderItems(all);
+      if (disc.length) addItems(disc, el === stage);
+      if (rest.length) handleFiles(rest.filter(f => !/^\./.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true})), el === stage && !disc.length);
+    })();
+    return;
+  }
   const files = [...e.dataTransfer.files];
   if (files.length) handleFiles(files, el === stage);
   else { const u = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if (/^https?:/i.test(u)) addItems([itemFromUrl(u.trim())], el === stage); }
